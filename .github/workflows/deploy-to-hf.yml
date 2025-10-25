@@ -3,26 +3,19 @@ name: Deploy to Hugging Face Space
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # (опционально) убедимся, что мусор не улетит
-      - name: Show working tree
-        run: |
-          echo "Root:"
-          ls -la
-          echo ".gitignore:"
-          cat .gitignore || true
-
       - name: Push to HF Space
-        uses: huggingface/hub-action@v1
+        uses: huggingface/hub-action@v1   # <-- обычный дефис!
         with:
-          repo-token: ${{ secrets.HF_TOKEN }}
-          repo-type: space
-          repo-id: nimzuk/clodes   # <= твой Space: owner/name
+          repo-id: nimzuk/clodes          # <--- твой Space: owner/space_name
+          token: ${{ secrets.HF_TOKEN }}
+          path: .                         # что синкать (корень репо)
