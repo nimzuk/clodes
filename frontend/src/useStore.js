@@ -39,7 +39,6 @@ const useStore = create((set, get) => ({
   uploadedPath: null,
   uploadedUrl: null,
   busy: false,
-  lastPreviewUrls: null,
   lastOrderInfo: null,
 
   // сеттеры
@@ -115,6 +114,7 @@ const useStore = create((set, get) => ({
     const detail = details[active];
     if (!uploadedPath) throw new Error("Сначала загрузите принт");
 
+    const detail = details[active];
     set({ busy: true });
     try {
       const payload = {
@@ -165,6 +165,7 @@ const useStore = create((set, get) => ({
     const detail = details[active];
     if (!uploadedPath) throw new Error("Сначала загрузите принт");
 
+    const detail = details[active];
     set({ busy: true });
     try {
       const payload = {
