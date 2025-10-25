@@ -20,20 +20,22 @@ const postFile = async (url, file) => {
   return res.json();
 };
 
-const VIEWS = ["front", "sleeveL", "back", "sleeveR"];
-const createDetail = () => ({
+const createInitialDetail = () => ({
   previewUrl: null,
   transform: { scale: 1, tx: 0, ty: 0 },
   tile: { enabled: false },
 });
-const ensureDetail = (details, view) => details[view] ?? createDetail();
 
 const useStore = create((set, get) => ({
   // состояние
   model: "MT",
-  view: "front",
   active: "front",
-  details: VIEWS.reduce((acc, view) => ({ ...acc, [view]: createDetail() }), {}),
+  details: {
+    front: createInitialDetail(),
+    sleeveL: createInitialDetail(),
+    back: createInitialDetail(),
+    sleeveR: createInitialDetail(),
+  },
   uploadedPath: null,
   uploadedUrl: null,
   busy: false,
@@ -42,78 +44,58 @@ const useStore = create((set, get) => ({
 
   // сеттеры
   setModel: (model) => set({ model }),
-  setView: (view) =>
-    set((state) => ({
-      view,
-      active: view,
-      details: state.details[view]
-        ? state.details
-        : { ...state.details, [view]: createDetail() },
-    })),
-  setActive: (active) =>
-    set((state) => ({
-      active,
-      view: active,
-      details: state.details[active]
-        ? state.details
-        : { ...state.details, [active]: createDetail() },
-    })),
+  setActive: (active) => set({ active }),
   setScale: (scale) =>
-    set((state) => {
-      const active = state.active;
-      const detail = state.details[active] ?? createDetail();
-      return {
-        details: {
-          ...state.details,
-          [active]: {
-            ...detail,
-            transform: { ...detail.transform, scale },
+    set((state) => ({
+      details: {
+        ...state.details,
+        [state.active]: {
+          ...state.details[state.active],
+          transform: {
+            ...state.details[state.active].transform,
+            scale,
           },
         },
-      };
-    }),
+      },
+    })),
   setTx: (tx) =>
-    set((state) => {
-      const active = state.active;
-      const detail = state.details[active] ?? createDetail();
-      return {
-        details: {
-          ...state.details,
-          [active]: {
-            ...detail,
-            transform: { ...detail.transform, tx },
+    set((state) => ({
+      details: {
+        ...state.details,
+        [state.active]: {
+          ...state.details[state.active],
+          transform: {
+            ...state.details[state.active].transform,
+            tx,
           },
         },
-      };
-    }),
+      },
+    })),
   setTy: (ty) =>
-    set((state) => {
-      const active = state.active;
-      const detail = state.details[active] ?? createDetail();
-      return {
-        details: {
-          ...state.details,
-          [active]: {
-            ...detail,
-            transform: { ...detail.transform, ty },
+    set((state) => ({
+      details: {
+        ...state.details,
+        [state.active]: {
+          ...state.details[state.active],
+          transform: {
+            ...state.details[state.active].transform,
+            ty,
           },
         },
-      };
-    }),
+      },
+    })),
   toggleTile: () =>
-    set((state) => {
-      const active = state.active;
-      const detail = state.details[active] ?? createDetail();
-      return {
-        details: {
-          ...state.details,
-          [active]: {
-            ...detail,
-            tile: { ...detail.tile, enabled: !detail.tile.enabled },
+    set((state) => ({
+      details: {
+        ...state.details,
+        [state.active]: {
+          ...state.details[state.active],
+          tile: {
+            enabled: !state.details[state.active].tile.enabled,
           },
         },
-      };
-    }),
+      },
+    })),
 
   // 1) загрузка принта
   async upload(file) {
@@ -129,9 +111,8 @@ const useStore = create((set, get) => ({
 
   // 2) построение превью из текущих контролов
   async spread() {
-    const state = get();
-    const { model, active, uploadedPath } = state;
-    const detail = state.details[active];
+    const { model, active, details, uploadedPath } = get();
+    const detail = details[active];
     if (!uploadedPath) throw new Error("Сначала загрузите принт");
 
     set({ busy: true });
@@ -139,38 +120,33 @@ const useStore = create((set, get) => ({
       const payload = {
         model,
         view: active,
-        src: uploadedPath,
-        tile: detail.tile.enabled,
-        offset_x: detail.transform.tx,
-        offset_y: detail.transform.ty,
-        scale: detail.transform.scale,
+        details: {
+          print_path: uploadedPath,
+          tile: detail.tile.enabled,
+          offset_x: detail.transform.tx,
+          offset_y: detail.transform.ty,
+          scale: detail.transform.scale,
+        },
       };
       const data = await postJSON("/api/preview", payload);
-      const activeView = active;
-      set((prev) => {
-        const nextDetails = { ...prev.details };
-
-        if (data.previews && typeof data.previews === "object") {
-          for (const [viewKey, url] of Object.entries(data.previews)) {
-            const detail = ensureDetail(nextDetails, viewKey);
-            nextDetails[viewKey] = { ...detail, previewUrl: url };
+      const urls =
+        data.previews ||
+        (data.preview_url ? { [active]: data.preview_url } : null);
+      if (urls) {
+        set((state) => {
+          const updatedDetails = { ...state.details };
+          for (const [key, url] of Object.entries(urls)) {
+            if (!updatedDetails[key]) continue;
+            updatedDetails[key] = {
+              ...updatedDetails[key],
+              previewUrl: url,
+            };
           }
-        } else if (data.url) {
-          const detail = ensureDetail(nextDetails, activeView);
-          nextDetails[activeView] = { ...detail, previewUrl: data.url };
-        }
-
-        const previewsMap =
-          data.previews ??
-          (data.url
-            ? { ...(prev.lastPreviewUrls ?? {}), [activeView]: data.url }
-            : prev.lastPreviewUrls);
-
-        return {
-          details: nextDetails,
-          lastPreviewUrls: previewsMap ?? null,
-        };
-      });
+          return { details: updatedDetails, lastPreviewUrls: urls };
+        });
+      } else {
+        set({ lastPreviewUrls: urls });
+      }
       return data;
     } finally {
       set({ busy: false });
@@ -185,9 +161,8 @@ const useStore = create((set, get) => ({
 
   // 3) создание заказа
   async startOrder() {
-    const state = get();
-    const { model, active, uploadedPath } = state;
-    const detail = state.details[active];
+    const { model, active, details, uploadedPath } = get();
+    const detail = details[active];
     if (!uploadedPath) throw new Error("Сначала загрузите принт");
 
     set({ busy: true });
@@ -195,11 +170,13 @@ const useStore = create((set, get) => ({
       const payload = {
         model,
         view: active,
-        src: uploadedPath,
-        tile: detail.tile.enabled,
-        offset_x: detail.transform.tx,
-        offset_y: detail.transform.ty,
-        scale: detail.transform.scale,
+        details: {
+          print_path: uploadedPath,
+          tile: detail.tile.enabled,
+          offset_x: detail.transform.tx,
+          offset_y: detail.transform.ty,
+          scale: detail.transform.scale,
+        },
       };
       const data = await postJSON("/api/order", payload);
       set({ lastOrderInfo: data });
