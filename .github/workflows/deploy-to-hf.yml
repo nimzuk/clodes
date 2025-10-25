@@ -1,4 +1,4 @@
-name: Deploy to Hugging Face Space
+name: Deploy to Hugging Face Space (no external actions)
 
 on:
   push:
@@ -8,14 +8,42 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Push to HF Space
-        uses: huggingface/hub-action@v1   # <-- обычный дефис!
-        with:
-          repo-id: nimzuk/clodes          # <--- твой Space: owner/space_name
-          token: ${{ secrets.HF_TOKEN }}
-          path: .                         # что синкать (корень репо)
+      - name: Install HF client
+        run: pip install --upgrade huggingface_hub
+
+      - name: Upload repo to Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}         # секрет в репозитории GitHub
+          SPACE_ID: nimzuk/clodes                   # owner/space_name в Hugging Face
+        run: |
+          python - << 'PY'
+          import os
+          from huggingface_hub import HfApi, upload_folder
+          token   = os.environ["HF_TOKEN"]
+          space   = os.environ["SPACE_ID"]
+
+          api = HfApi(token=token)
+          # создадим Space, если его ещё нет (SDK — Docker)
+          api.create_repo(
+              repo_id=space,
+              repo_type="space",
+              exist_ok=True,
+              space_sdk="docker",
+          )
+          # зальём содержимое репозитория в Space
+          upload_folder(
+              folder_path=".",
+              repo_id=space,
+              repo_type="space",
+              token=token,
+              path_in_repo="",
+              commit_message="CI: sync from GitHub",
+              ignore_patterns=[
+                ".git*", "node_modules/**", "__pycache__/**", "*.zip"
+              ],
+          )
+          PY
