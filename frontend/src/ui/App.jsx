@@ -7,6 +7,7 @@ function useImage(url){ const [i,set]=React.useState(null); React.useEffect(()=>
 export default function App(){
   const s = useStore()
   const d = s.details[s.active]
+  const orderInfo = s.lastOrderInfo
   const img = useImage(d.previewUrl)
   return (
     <div style={{display:'grid',gridTemplateColumns:'280px 1fr',minHeight:'100vh'}}>
@@ -33,8 +34,30 @@ export default function App(){
           <label htmlFor="file" style={{padding:'8px 12px',background:'#2563eb',display:'inline-block',borderRadius:8,cursor:'pointer'}}>Upload / Spread</label>
         </div>
         <div style={{marginTop:12}}>
-          <button onClick={s.startOrder}>Order</button>
+          <button onClick={async ()=>{
+            try {
+              await s.startOrder()
+            } catch (err) {
+              console.error(err)
+              alert(err.message || String(err))
+            }
+          }}>Order</button>
         </div>
+        {orderInfo?.mockups?.length ? (
+          <div style={{marginTop:12, padding:12, border:'1px solid #2563eb', borderRadius:8}}>
+            <div style={{fontWeight:600, marginBottom:8}}>Mockups:</div>
+            <ul style={{margin:0, paddingLeft:20}}>
+              {orderInfo.mockups.map((url, idx)=>(
+                <li key={url+idx}><a href={url} target="_blank" rel="noreferrer">{url}</a></li>
+              ))}
+            </ul>
+            {orderInfo.mockups_dir ? (
+              <div style={{marginTop:8}}>
+                <a href={orderInfo.mockups_dir} target="_blank" rel="noreferrer">Open mockups folder</a>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div style={{display:'grid',placeItems:'center'}}>
         {!img ? <label style={{border:'2px dashed #3a4251',padding:40,borderRadius:12,cursor:'pointer'}}>
