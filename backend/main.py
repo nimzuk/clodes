@@ -58,23 +58,46 @@ def _load_view_assets(model: str, view: str):
         if p.exists(): files[n] = p
     return files
 
-def _compose_preview(src_img_path: Path, assets):
+def _compose_preview(
+    src_img_path: Path,
+    assets,
+    *,
+    tile: bool = False,
+    offset_x: int = 0,
+    offset_y: int = 0,
+    scale: float = 1.0,
+):
     bg = _ensure_rgba(Image.open(assets["background.png"]))
     canvas = Image.new("RGBA", bg.size, (0,0,0,0))
     canvas.alpha_composite(bg)
-    user = _ensure_rgba(Image.open(src_img_path)).resize((1200,900), Image.BICUBIC)
-    x = (canvas.width - user.width)//2
-    y = (canvas.height - user.height)//2
-    base_mask = Image.open(assets["mask.png"]).convert("L")
+    user = _ensure_rgba(Image.open(src_img_path))
+    scale = max(0.01, float(scale or 0))
+    scaled_size = (
+        max(1, int(round(user.width * scale))),
+        max(1, int(round(user.height * scale))),
+    )
+    user = user.resize(scaled_size, Image.BICUBIC)
+    ox = int(offset_x)
+    oy = int(offset_y)
     user_on = Image.new("RGBA", canvas.size, (0,0,0,0))
-    user_on.paste(user, (x,y), user)
+    if tile and user.width > 0 and user.height > 0:
+        step_x = max(1, user.width)
+        step_y = max(1, user.height)
+        pad_x = step_x * 2
+        pad_y = step_y * 2
+        for ty in range(-pad_y, canvas.height + pad_y, step_y):
+            for tx in range(-pad_x, canvas.width + pad_x, step_x):
+                user_on.paste(user, (tx + ox, ty + oy), user)
+    else:
+        x = (canvas.width - user.width)//2 + ox
+        y = (canvas.height - user.height)//2 + oy
+        user_on.paste(user, (x,y), user)
+    base_mask = Image.open(assets["mask.png"]).convert("L")
     canvas.paste(user_on, (0,0), base_mask)
     for s in ("mask_s1.png","mask_s2.png"):
         if s in assets:
             m = Image.open(assets[s]).convert("L")
-            tmp = Image.new("RGBA", canvas.size, (0,0,0,0))
-            tmp.paste(user, (x,y), user)
-            canvas.paste(tmp, (0,0), m)
+            canvas.paste(user_on, (0,0), m)
     overlay = _ensure_rgba(Image.open(assets["overlay.png"]))
     canvas.alpha_composite(overlay)
     return canvas
@@ -97,7 +120,14 @@ async def preview(p: PreviewInput):
     src = (CWD / p.src) if not Path(p.src).is_absolute() else Path(p.src)
     if not src.exists():
         raise HTTPException(400, f"Uploaded file not found: {src}")
-    img = _compose_preview(src, _load_view_assets(p.model, p.view))
+    img = _compose_preview(
+        src,
+        _load_view_assets(p.model, p.view),
+        tile=p.tile,
+        offset_x=p.offset_x,
+        offset_y=p.offset_y,
+        scale=p.scale,
+    )
     out = PREVIEWS_DIR / f"{uuid.uuid4().hex[:8]}_{p.model}_{p.view}.png"
     img.save(out, "PNG")
     rel = out.relative_to(CWD)
@@ -111,7 +141,14 @@ async def order(p: OrderInput):
     oid = uuid.uuid4().hex[:8]
     base = (ORDERS_DIR / oid); (base/"mockups").mkdir(parents=True, exist_ok=True); (base/"sources").mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, base/"sources"/Path(src.name))
-    img = _compose_preview(src, _load_view_assets(p.model, p.view))
+    img = _compose_preview(
+        src,
+        _load_view_assets(p.model, p.view),
+        tile=p.tile,
+        offset_x=p.offset_x,
+        offset_y=p.offset_y,
+        scale=p.scale,
+    )
     out = base/"mockups"/f"{p.model}_{p.view}.png"; img.save(out, "PNG")
     return {"ok": True, "order": oid,
             "mockups": [f"/files/{out.relative_to(CWD)}".replace("\\","/")],
