@@ -37,6 +37,7 @@ const useStore = create((set, get) => ({
     sleeveR: createInitialDetail(),
   },
   uploadedPath: null,
+  uploadedUrl: null,
   busy: false,
   lastPreviewUrls: null,
   lastOrderInfo: null,
@@ -100,8 +101,8 @@ const useStore = create((set, get) => ({
   async upload(file) {
     set({ busy: true });
     try {
-      const { path } = await postFile("/api/upload", file);
-      set({ uploadedPath: path });
+      const { path, url } = await postFile("/api/upload", file);
+      set({ uploadedPath: path, uploadedUrl: url });
       return path;
     } finally {
       set({ busy: false });
